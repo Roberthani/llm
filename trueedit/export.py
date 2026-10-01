@@ -63,12 +63,15 @@ def fidelity(pid: str, page: int, doc: dict | None = None) -> dict:
     A = S.read_json(S.page_dir(pid, page) / "analysis.json", {})
     words = {w["id"]: w for r in A.get("regions", []) for w in r["words"]}
     for p in patches:
+        # a moved word carries its own blur halo, which extends ~2 sigma beyond its ink box
+        sig = (p.info.get("style") or {}).get("sigma", 1.0) or 1.0
+        mg = int(3 + 2 * sig)
         for mv in p.info.get("moved", []):
             w = words.get(mv["id"])
             if w:
                 b = w["bbox"]
                 for dx in (0, mv["dx"]):
-                    allowed[max(0, b[1] - 4):b[3] + 4, max(0, b[0] + dx - 4):b[2] + dx + 4] = True
+                    allowed[max(0, b[1] - mg):b[3] + mg, max(0, b[0] + dx - mg):b[2] + dx + mg] = True
     outside = diff & ~allowed
     ys, xs = np.nonzero(diff)
     total = int(diff.sum())
