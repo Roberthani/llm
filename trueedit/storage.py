@@ -109,8 +109,8 @@ def load_image(path: Path) -> np.ndarray:
     img = cv2.imread(key, cv2.IMREAD_COLOR)
     if img is None:
         raise NotFound(key)
-    if len(_IMG_CACHE) > 24:
-        _IMG_CACHE.clear()
+    if len(_IMG_CACHE) >= 6:  # full-page images are ~25 MB each
+        _IMG_CACHE.pop(next(iter(_IMG_CACHE)))
     _IMG_CACHE[key] = (mt, img)
     return img
 

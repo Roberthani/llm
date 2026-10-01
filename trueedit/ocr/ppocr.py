@@ -36,6 +36,10 @@ def _session(path: Path):
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = int(os.environ.get("TRUEEDIT_OCR_THREADS", max(1, (os.cpu_count() or 2))))
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    # inputs vary in size per page/line: without this the arena keeps every buffer it ever
+    # allocated and memory grows past 2 GB on small servers
+    opts.enable_cpu_mem_arena = False
+    opts.enable_mem_pattern = False
     return ort.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"])
 
 

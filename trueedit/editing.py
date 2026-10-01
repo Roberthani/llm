@@ -269,7 +269,8 @@ def render_page_edits(canvas: np.ndarray, analysis: dict, edits: list[dict], cac
             p.info["effective_bbox"] = e["bbox"]
             with _PC_LOCK:
                 _PATCH_CACHE[key] = p
-                while len(_PATCH_CACHE) > 600:
+                # bound memory: ~150 MB of cached patches
+                while len(_PATCH_CACHE) > 1 and sum(q.rgb.nbytes + q.mask.nbytes for q in _PATCH_CACHE.values()) > 150e6:
                     _PATCH_CACHE.popitem(last=False)
         patches.append(p)
         cur = R.composite(cur, [p])

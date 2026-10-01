@@ -36,6 +36,30 @@ locked, edits one field and verifies no other pixel changed, exercises undo/redo
 and PNG and reopens them. Test artefacts (diff images, overlays, exports, metrics) land in
 `test-results/`.
 
+## Deploy (get a shareable link)
+
+The repo ships a production `Dockerfile` (Ubuntu 24.04, Python 3.12, Tesseract, OCR models
+baked in; ~1.1 GB image) and a `railway.json`. Memory: ~0.5–0.7 GB steady, ~1 GB peak per
+analysis — give it **2 GB RAM**. Set `TRUEEDIT_PASSWORD` so the link isn't open to anyone
+(browser asks for it once; any username). `/api/health` stays public for health checks.
+
+**Railway (recommended, ~5 minutes):**
+1. railway.com → sign in with GitHub → **New Project → Deploy from GitHub repo** → `Roberthani/llm`.
+2. Service → **Settings → Source**: branch `claude/tender-hopper-hzl8uf` (if not the default).
+3. Service → **Variables**: add `TRUEEDIT_PASSWORD` = a password of your choice.
+4. Service → **Settings → Networking → Generate Domain** → that `*.up.railway.app` URL is your link.
+
+Railway reads `railway.json` (Dockerfile build, `/api/health` health check) and sets `PORT`.
+
+**Any other Docker host** (Fly.io, Render, a VM):
+```bash
+docker build -t trueedit .
+docker run -d -p 8000:8000 -e TRUEEDIT_PASSWORD=change-me --memory=2g trueedit
+```
+Uploaded documents live on the container's disk under `/data/projects` and are deleted after
+`TRUEEDIT_RETENTION_DAYS` (2 by default in the image); mount a volume there to keep them.
+Check a deployment end-to-end with `TRUEEDIT_PASSWORD=… .venv/bin/python scripts/smoke_test.py https://your-url`.
+
 ## Workflow
 
 | Step | What happens |
@@ -106,6 +130,8 @@ Errors are JSON `{error: {code, message, hint}}`; analysis failures carry `recov
 | `TRUEEDIT_WORKERS` | `1` | concurrent analysis jobs |
 | `TRUEEDIT_OCR_THREADS` | CPU count | ONNX Runtime threads |
 | `TRUEEDIT_RETENTION_DAYS` | `7` | delete projects untouched for this long (on start-up) |
+| `TRUEEDIT_PASSWORD` | — | require this password (HTTP Basic, any username) |
+| `HOST` / `PORT` | `127.0.0.1` / `8000` | listen address (the Docker image uses `0.0.0.0`) |
 | `TRUEEDIT_FAULT` | — | test-only fault injection: `ocr_crash`, `ocr_unavailable`, `ocr_slow` |
 
 ## Known limitations
@@ -122,8 +148,8 @@ Errors are JSON `{error: {code, message, hint}}`; analysis failures carry `recov
   scripts, but the replacement fonts are Latin-focused).
 * Tables need visible rulings (full grid or horizontal rules); whitespace-only tables are read
   line by line.
-* Single-process server with in-memory job status; no authentication — run it locally or
-  behind your own auth.
+* Single-process server with in-memory job status and one shared password (no per-user accounts);
+  run a single instance.
 
 Model weights: PaddleOCR PP-OCRv5/v4 (Apache-2.0) via the `onnxocr` and `rapidocr-onnxruntime`
 PyPI packages. Fonts: Liberation (SIL OFL 1.1) and DejaVu (Bitstream Vera licence), see

@@ -46,6 +46,15 @@ async function initUpload() {
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
   drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) upload(f, /\.trueedit$/i.test(f.name)); });
   renderRecent();
+  api("/api/samples").then((r) => r.json()).then(({ samples }) => {
+    if (!samples.length) return;
+    const b = $("#btn-sample"); b.hidden = false;
+    b.onclick = async () => {
+      const name = samples.find((s) => s.startsWith("order")) || samples[0];
+      const blob = await (await api(`/api/samples/${name}`)).blob();
+      upload(new File([blob], name, { type: "image/jpeg" }));
+    };
+  }).catch(() => {});
   try {
     const h = await (await api("/api/health")).json();
     $("#maxmb").textContent = h.max_upload_mb;

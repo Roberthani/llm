@@ -5,7 +5,7 @@
     e.g.  scripts/smoke_test.py http://127.0.0.1:8000 samples/invoice_photo.jpg Priya Margaret
     (field defaults to the customer first name of the bundled samples)
 
-Needs the test tools:  scripts/setup.sh --dev
+Needs the test tools:  scripts/setup.sh --dev     (set TRUEEDIT_PASSWORD if the server is password-protected)
 Prints PASS/FAIL per check; exit code 0 only if every check passes.
 """
 from __future__ import annotations
@@ -39,8 +39,16 @@ def check(name, ok, detail=""):
     return ok
 
 
+PASSWORD = os.environ.get("TRUEEDIT_PASSWORD")
+
+
 def get(path, binary=False):
-    with urllib.request.urlopen(URL + path, timeout=120) as r:
+    req = urllib.request.Request(URL + path)
+    if PASSWORD:
+        import base64
+
+        req.add_header("Authorization", "Basic " + base64.b64encode(f"user:{PASSWORD}".encode()).decode())
+    with urllib.request.urlopen(req, timeout=120) as r:
         data = r.read()
     return data if binary else json.loads(data)
 
@@ -63,7 +71,8 @@ def main():
 
     with sync_playwright() as p:
         b = p.chromium.launch(**({"executable_path": CHROME} if os.path.exists(CHROME) else {}))
-        page = b.new_context(viewport={"width": 1400, "height": 900}, accept_downloads=True).new_page()
+        creds = {"http_credentials": {"username": "user", "password": PASSWORD}} if PASSWORD else {}
+        page = b.new_context(viewport={"width": 1400, "height": 900}, accept_downloads=True, **creds).new_page()
         errors = []
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))

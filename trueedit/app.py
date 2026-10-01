@@ -31,6 +31,28 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="TrueEdit OCR", version=VERSION, lifespan=lifespan)
+SAMPLES = Path(__file__).resolve().parents[1] / "samples"
+
+
+@app.middleware("http")
+async def password_gate(request: Request, call_next):
+    """Optional shared password (HTTP Basic, any username) when TRUEEDIT_PASSWORD is set."""
+    import secrets
+
+    pw = os.environ.get("TRUEEDIT_PASSWORD")
+    if pw and request.url.path != "/api/health":
+        auth = request.headers.get("authorization", "")
+        ok = False
+        if auth.lower().startswith("basic "):
+            try:
+                user_pw = base64.b64decode(auth[6:]).decode("utf-8", "replace")
+                ok = secrets.compare_digest(user_pw.split(":", 1)[-1], pw)
+            except Exception:
+                ok = False
+        if not ok:
+            return Response("Password required", status_code=401,
+                            headers={"WWW-Authenticate": 'Basic realm="TrueEdit OCR", charset="UTF-8"'})
+    return await call_next(request)
 
 
 def err(status: int, code: str, message: str, hint: str | None = None, **extra):
@@ -324,6 +346,19 @@ def export(pid: str, req: ExportReq):
 
 
 # ------------------------------------------------------------------ static web app
+
+@app.get("/api/samples")
+def list_samples():
+    return {"samples": sorted(p.name for p in SAMPLES.glob("*.jpg"))} if SAMPLES.exists() else {"samples": []}
+
+
+@app.get("/api/samples/{name}")
+def get_sample(name: str):
+    p = SAMPLES / os.path.basename(name)
+    if not p.is_file():
+        raise S.NotFound(name)
+    return FileResponse(p, media_type="image/jpeg")
+
 
 @app.get("/")
 def index():
