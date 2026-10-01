@@ -8,21 +8,33 @@ tables, borders and every untouched word stay bit-identical to the original.
 
 ## Quick start
 
-```bash
-sudo apt-get install -y tesseract-ocr   # optional secondary OCR engine (recommended)
-scripts/setup.sh                        # venv, dependencies, OCR models, test fixtures
-scripts/run.sh                          # http://127.0.0.1:8000   (HOST / PORT env vars to change)
-```
-
-Run the tests (real OCR, real browser — nothing mocked in the main path):
+Requires Python 3.10+ (Linux or macOS). Tesseract is optional (secondary OCR engine).
 
 ```bash
-.venv/bin/python -m pytest              # everything (~15 min on 4 CPU cores)
-.venv/bin/python -m pytest -m "not e2e" # API / pipeline only
-.venv/bin/python scripts/eval_ocr.py photo --overlay /tmp/ocr.jpg   # accuracy vs ground truth
+git clone https://github.com/Roberthani/llm
+cd llm
+git checkout claude/tender-hopper-hzl8uf
+scripts/setup.sh      # one-time: virtualenv, dependencies, OCR models (~5 min)
+scripts/run.sh        # then open http://127.0.0.1:8000   (HOST / PORT env vars to change)
 ```
 
-Test artefacts (diff images, OCR overlays, exported files, metrics JSON) land in `test-results/`.
+Try it with the sample photos in `samples/` (a retail order and an invoice, photographed with
+perspective, folds and shadows).
+
+## Testing
+
+```bash
+scripts/setup.sh --dev                         # adds pytest + Playwright Chromium
+.venv/bin/python scripts/smoke_test.py         # browser end-to-end check against a running scripts/run.sh
+.venv/bin/python -m pytest                     # full suite (~15 min on 4 CPU cores)
+.venv/bin/python -m pytest -m "not e2e"        # API / pipeline only
+.venv/bin/python scripts/eval_ocr.py photo --overlay /tmp/ocr.jpg   # OCR accuracy vs ground truth
+```
+
+The smoke test uploads a sample, waits for OCR, checks text is editable and logo/barcode are
+locked, edits one field and verifies no other pixel changed, exercises undo/redo, exports PDF
+and PNG and reopens them. Test artefacts (diff images, overlays, exports, metrics) land in
+`test-results/`.
 
 ## Workflow
 

@@ -225,11 +225,16 @@ WORD_JS = r"""
 """
 
 
+def _launch(p):
+    # use a system Chromium if configured/present, otherwise Playwright's own browser
+    return p.chromium.launch(**({"executable_path": CHROME} if os.path.exists(CHROME) else {}))
+
+
 def render_html(html: str, png_path: Path | None, pdf_path: Path | None):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=CHROME)
+        b = _launch(p)
         page = b.new_page(viewport={"width": 816, "height": 1056}, device_scale_factor=SCALE)
         page.set_content(html)
         page.wait_for_timeout(150)
@@ -249,11 +254,11 @@ def render_html(html: str, png_path: Path | None, pdf_path: Path | None):
 def render_pdf_pages(htmls: list[str], pdf_path: Path):
     from playwright.sync_api import sync_playwright
 
-    import fitz
+    import pymupdf as fitz
 
     out = fitz.open()
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=CHROME)
+        b = _launch(p)
         page = b.new_page(viewport={"width": 816, "height": 1056})
         for h in htmls:
             page.set_content(h)
@@ -451,7 +456,7 @@ def main():
     write_jpeg(OUT / "invoice_photo.jpg", photo2, 80)
     (OUT / "invoice_photo.json").write_text(json.dumps(meta2))
 
-    import fitz
+    import pymupdf as fitz
 
     doc = fitz.open()
     pg = doc.new_page(width=612, height=792)
