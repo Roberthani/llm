@@ -199,7 +199,9 @@ def main():
     crop = raster[max(0, y0 - 10):y1 + 10, max(0, x0 - 10):x1 + 60]
     boxes = sorted(m["det"](crop, limit_side=1600), key=lambda b: b.quad[:, 0].min())
     read = " ".join(r.text for r in m["rec"]([crop_quad(crop, b.quad)[0] for b in boxes]))
-    check("edited text reads back from the exported PDF", read.replace(" ", "").startswith(NEW.replace(" ", "")), repr(read))
+    flat = read.replace(" ", "")
+    check("edited text reads back from the exported PDF",
+          NEW.replace(" ", "") in flat and field.replace(" ", "") not in flat, repr(read))
 
 
 if __name__ == "__main__":
