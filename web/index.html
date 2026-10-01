@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TrueEdit OCR</title>
+<meta name="theme-color" content="#0f3d3e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f3d3e'/%3E%3Cpath d='M9 10h14M16 10v13' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-1.5 4L16 12H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-compare" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4v16" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/><path d="M12 9v6M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12m0-6.5V5a1.5 1.5 0 0 1 3 0v7m0-5.5a1.5 1.5 0 0 1 3 0V14a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L3.5 14a1.5 1.5 0 0 1 2.5-1.7L8 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.1-2.6-6.6L6 18z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- ============ Upload ============ -->
+<main id="screen-upload" class="screen">
+  <div class="up-wrap">
+    <div class="brand"><span class="mark">T</span><span>TrueEdit <b>OCR</b></span></div>
+    <h1>Edit text in a photo or scan — and change nothing else.</h1>
+    <p class="lede">Upload a document, click the text you want to change, and export. Logos, barcodes, tables and every untouched pixel stay exactly as they were.</p>
+    <label id="drop" class="drop" tabindex="0">
+      <input id="file" type="file" accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.tif,.tiff,.bmp,.pdf,image/*,application/pdf" hidden>
+      <svg class="ic lg"><use href="#i-upload"/></svg>
+      <strong>Drop a file here or <u>browse</u></strong>
+      <span class="muted">JPG, PNG, HEIC, PDF (multi-page) · up to <span id="maxmb">80</span> MB</span>
+    </label>
+    <div class="up-actions">
+      <label class="btn ghost"><input id="camera" type="file" accept="image/*" capture="environment" hidden><svg class="ic"><use href="#i-camera"/></svg>Take photo</label>
+      <label class="btn ghost"><input id="projfile" type="file" accept=".trueedit,application/zip" hidden>Open project file</label>
+    </div>
+    <div id="up-error" class="alert error" hidden></div>
+    <div id="recent" class="recent" hidden><h3>Recent</h3><ul></ul></div>
+    <p class="fine muted" id="engine-line"></p>
+  </div>
+</main>
+
+<!-- ============ Analyze ============ -->
+<main id="screen-analyze" class="screen" hidden>
+  <div class="an-wrap">
+    <div class="brand small"><span class="mark">T</span><span>TrueEdit <b>OCR</b></span></div>
+    <h2 id="an-title">Analyzing document…</h2>
+    <div class="progress"><div id="an-bar"></div></div>
+    <p id="an-stage" class="muted">Uploading</p>
+    <div id="an-error" class="alert error" hidden></div>
+    <div id="an-actions" class="row" hidden></div>
+  </div>
+</main>
+
+<!-- ============ Editor ============ -->
+<div id="screen-editor" class="screen editor" hidden>
+  <header class="topbar">
+    <button class="icon-btn" id="btn-home" title="New document" aria-label="New document"><span class="mark sm">T</span></button>
+    <div class="docname" id="docname"></div>
+    <div class="pager" id="pager" hidden>
+      <button class="icon-btn" id="pg-prev" aria-label="Previous page">‹</button><span id="pg-label"></span><button class="icon-btn" id="pg-next" aria-label="Next page">›</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="tools">
+      <button class="icon-btn" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ic"><use href="#i-undo"/></svg></button>
+      <button class="icon-btn" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg class="ic"><use href="#i-redo"/></svg></button>
+      <span class="sep"></span>
+      <button class="icon-btn" id="btn-find" title="Find & replace (Ctrl+F)" aria-label="Find and replace"><svg class="ic"><use href="#i-search"/></svg></button>
+      <button class="icon-btn badge-host" id="btn-review" title="Review uncertain text" aria-label="Review"><svg class="ic"><use href="#i-flag"/></svg><span class="badge" id="review-count" hidden>0</span></button>
+      <button class="icon-btn badge-host" id="btn-changes" title="Changes" aria-label="Changes"><svg class="ic"><use href="#i-list"/></svg><span class="badge neutral" id="edit-count" hidden>0</span></button>
+      <button class="icon-btn" id="btn-compare" title="Compare original / edited" aria-label="Compare"><svg class="ic"><use href="#i-compare"/></svg></button>
+    </div>
+    <button class="btn primary" id="btn-export">Export</button>
+  </header>
+
+  <div class="workspace">
+    <section class="stage" id="stage" aria-label="Document page">
+      <div class="page" id="page">
+        <img id="page-img" alt="Document page" draggable="false">
+        <div id="patch-layer"></div>
+        <div id="region-layer"></div>
+        <div id="sel-layer"></div>
+      </div>
+      <div class="floating zoombar">
+        <button class="icon-btn mode active" id="mode-select" title="Select text (V)" aria-label="Select text"><svg class="ic"><use href="#i-cursor"/></svg></button>
+        <button class="icon-btn mode" id="mode-pan" title="Pan (H)" aria-label="Pan"><svg class="ic"><use href="#i-hand"/></svg></button>
+        <button class="icon-btn mode" id="mode-draw" title="Draw a region (R)" aria-label="Draw region"><svg class="ic"><use href="#i-box"/></svg></button>
+        <span class="sep"></span>
+        <button class="icon-btn" id="zoom-out" aria-label="Zoom out"><svg class="ic"><use href="#i-minus"/></svg></button>
+        <span id="zoom-label">100%</span>
+        <button class="icon-btn" id="zoom-in" aria-label="Zoom in"><svg class="ic"><use href="#i-plus"/></svg></button>
+        <button class="icon-btn" id="zoom-fit" aria-label="Fit page"><svg class="ic"><use href="#i-fit"/></svg></button>
+      </div>
+      <div class="toast-host" id="toasts" aria-live="polite"></div>
+      <div class="banner" id="page-banner" hidden></div>
+    </section>
+
+    <aside class="panel" id="panel" aria-label="Side panel">
+      <div class="panel-grip" id="panel-grip"></div>
+      <!-- Edit -->
+      <div class="pane" id="pane-edit" hidden>
+        <div class="pane-head"><h3 id="edit-title">Edit text</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+        <div class="orig"><span class="muted">Original</span> <span id="edit-orig" class="mono"></span> <span id="edit-conf" class="pill"></span></div>
+        <div id="edit-warn" class="alert warn small" hidden></div>
+        <div id="edit-locked" class="alert info small" hidden><svg class="ic"><use href="#i-lock"/></svg><span></span> <button class="link" id="btn-unlock">Edit anyway</button></div>
+        <textarea id="edit-input" rows="2" spellcheck="false" autocomplete="off" placeholder="Replacement text"></textarea>
+        <div class="row wrap">
+          <button class="btn primary" id="btn-apply">Apply</button>
+          <button class="btn" id="btn-delete">Delete text</button>
+          <button class="btn ghost" id="btn-revert" hidden>Restore original</button>
+        </div>
+        <div class="row wrap small-gap">
+          <button class="chip" id="btn-scope">Select whole line</button>
+          <button class="chip" id="btn-adjust">Adjust area</button>
+        </div>
+        <details id="style-box">
+          <summary>Style <span class="muted" id="style-summary"></span></summary>
+          <div class="grid2">
+            <label>Font<select id="st-family"><option value="">Auto (matched)</option><option value="sans">Sans (Arial-like)</option><option value="serif">Serif (Times-like)</option><option value="mono">Mono (Courier-like)</option><option value="dejavu-sans">Sans wide (Verdana-like)</option><option value="dejavu-serif">Serif wide</option><option value="dejavu-mono">Mono wide</option></select></label>
+            <label>Weight<select id="st-bold"><option value="">Auto</option><option value="0">Regular</option><option value="1">Bold</option></select></label>
+            <label>Size (px)<input id="st-size" type="number" min="4" max="400" step="0.5" placeholder="auto"></label>
+            <label>Align<select id="st-align"><option value="">Auto</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+            <label>Colour<input id="st-color" type="color"></label>
+            <label class="chk"><input id="st-color-auto" type="checkbox" checked> auto colour</label>
+          </div>
+          <div class="nudge"><span class="muted">Nudge</span>
+            <button class="chip" data-nudge="-1,0">←</button><button class="chip" data-nudge="1,0">→</button><button class="chip" data-nudge="0,-1">↑</button><button class="chip" data-nudge="0,1">↓</button>
+            <span class="muted mono" id="nudge-val"></span>
+          </div>
+        </details>
+        <p class="fine muted">Only the pixels of this text are replaced. Everything else on the page stays identical.</p>
+      </div>
+      <!-- Review -->
+      <div class="pane" id="pane-review" hidden>
+        <div class="pane-head"><h3>Review uncertain text</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+        <p class="muted small" id="review-intro">These readings were flagged instead of guessed. Confirm or correct them — this changes the recognised text only, not the page.</p>
+        <ul class="review-list" id="review-list"></ul>
+      </div>
+      <!-- Changes -->
+      <div class="pane" id="pane-changes" hidden>
+        <div class="pane-head"><h3>Changes</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+        <ul class="change-list" id="change-list"></ul>
+        <p class="muted small" id="changes-empty">No changes yet. Click any text on the page to edit it.</p>
+      </div>
+      <!-- Find -->
+      <div class="pane" id="pane-find" hidden>
+        <div class="pane-head"><h3>Find &amp; replace</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+        <input id="find-q" type="search" placeholder="Find text" autocomplete="off">
+        <input id="find-r" type="text" placeholder="Replace with" autocomplete="off">
+        <label class="chk small"><input id="find-case" type="checkbox"> Match case</label>
+        <div class="row wrap">
+          <button class="btn" id="find-prev">Previous</button><button class="btn" id="find-next">Next</button>
+          <button class="btn" id="find-one">Replace</button><button class="btn primary" id="find-all">Replace all</button>
+        </div>
+        <p class="muted small" id="find-status"></p>
+      </div>
+      <!-- Info (default) -->
+      <div class="pane" id="pane-info">
+        <h3>Ready to edit</h3>
+        <ol class="steps">
+          <li><b>Tap any text</b> on the page to change or delete it.</li>
+          <li>Use <b>Review</b> <svg class="ic inline"><use href="#i-flag"/></svg> to confirm uncertain readings.</li>
+          <li>Text not detected? Use <b>Draw region</b> <svg class="ic inline"><use href="#i-box"/></svg>.</li>
+          <li><b>Compare</b> to verify, then <b>Export</b>.</li>
+        </ol>
+        <div id="doc-stats" class="stats"></div>
+        <label class="chk small"><input id="show-boxes" type="checkbox" checked> Show detected text boxes</label>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ Compare ============ -->
+<div class="modal" id="compare" hidden role="dialog" aria-modal="true" aria-label="Compare">
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <div class="seg" id="cmp-modes">
+        <button data-m="side" class="on">Side by side</button><button data-m="swipe">Swipe</button><button data-m="overlay">Overlay</button><button data-m="diff">Changes</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="cmp-close" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="cmp-stats" id="cmp-stats">Measuring…</div>
+    <div class="cmp-body" id="cmp-body"></div>
+  </div>
+</div>
+
+<!-- ============ Export ============ -->
+<div class="modal" id="export" hidden role="dialog" aria-modal="true" aria-label="Export">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Export</h3><div class="spacer"></div><button class="icon-btn" id="exp-close" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
+    <div class="exp-opts">
+      <label class="opt"><input type="radio" name="fmt" value="pdf" checked><span><b>PDF</b> <span class="muted">— original page size, full quality, searchable</span></span></label>
+      <label class="opt"><input type="radio" name="fmt" value="png"><span><b>PNG</b> <span class="muted">— lossless image</span></span></label>
+      <label class="opt"><input type="radio" name="fmt" value="jpg"><span><b>JPG</b> <span class="muted">— smaller image</span></span></label>
+      <label class="opt"><input type="radio" name="fmt" value="project"><span><b>Project file</b> <span class="muted">— reopen later and keep editing</span></span></label>
+    </div>
+    <label class="chk small" id="exp-compact-row"><input type="checkbox" id="exp-compact"> Smaller PDF (high-quality JPEG instead of lossless)</label>
+    <div id="exp-review-warn" class="alert warn small" hidden></div>
+    <div class="row"><button class="btn primary" id="exp-go">Download</button><span class="muted small" id="exp-status"></span></div>
+  </div>
+</div>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

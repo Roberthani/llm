@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+tests/fixtures/out/
+test-results/
+.pytest_cache/
+*.tmp
