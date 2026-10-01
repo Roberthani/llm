@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import cv2
@@ -22,13 +23,14 @@ from .ingest import MAX_UPLOAD_BYTES, InputError, load_document
 WEB = Path(__file__).resolve().parents[1] / "web"
 VERSION = "1.0.0"
 
-app = FastAPI(title="TrueEdit OCR", version=VERSION)
-
-
-@app.on_event("startup")
-def _startup():
+@asynccontextmanager
+async def lifespan(_app):
     # drop abandoned projects (default: untouched for 7 days)
     S.cleanup(float(os.environ.get("TRUEEDIT_RETENTION_DAYS", "7")) * 86400)
+    yield
+
+
+app = FastAPI(title="TrueEdit OCR", version=VERSION, lifespan=lifespan)
 
 
 def err(status: int, code: str, message: str, hint: str | None = None, **extra):
