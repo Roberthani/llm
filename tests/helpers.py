@@ -71,3 +71,16 @@ def save_diff(path, before, after, box=None, pad=60):
         cv2.imwrite(str(path), strip)
     else:
         cv2.imwrite(str(path), vis)
+
+
+# shared paths (also importable from the e2e package, where `conftest` is ambiguous)
+from pathlib import Path as _P
+import json as _json
+
+FX = _P(__file__).resolve().parent / "fixtures" / "out"
+RESULTS = _P(__file__).resolve().parents[1] / "test-results"
+
+
+def save_result(name, data):
+    RESULTS.mkdir(exist_ok=True)
+    (RESULTS / name).write_text(_json.dumps(data, indent=1, default=str))

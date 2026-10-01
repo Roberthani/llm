@@ -30,6 +30,7 @@
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
 [hidden] { display: none !important; }
+html, button, .btn, .chip, label, input, select, textarea, a { touch-action: manipulation; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .ic { width: 20px; height: 20px; flex: none; }
 .ic.lg { width: 34px; height: 34px; color: var(--accent); }

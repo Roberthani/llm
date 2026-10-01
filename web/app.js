@@ -377,7 +377,6 @@ function initStage() {
     gesture = null;
   };
   st.addEventListener("pointerup", end); st.addEventListener("pointercancel", end);
-  st.addEventListener("dblclick", (e) => { const r = e.target.closest(".r"); if (r && S.mode === "select") selectLine(r.dataset.l); });
   $("#zoom-in").onclick = () => { const r = stageRect(); zoomAt(1.25, r.width / 2, r.height / 2); };
   $("#zoom-out").onclick = () => { const r = stageRect(); zoomAt(0.8, r.width / 2, r.height / 2); };
   $("#zoom-fit").onclick = fitView;
@@ -392,10 +391,15 @@ function setMode(m) {
   if (m === "draw") toast("Drag a box around the text you want to edit.");
 }
 
+let lastTap = { t: 0, w: null };
 function onTap(target) {
   const r = target.closest && target.closest(".r");
-  if (!r) { clearSel(); return; }
-  if (r.dataset.line) return selectLine(r.dataset.l);
+  if (!r) { clearSel(); lastTap = { t: 0, w: null }; return; }
+  const now = Date.now();
+  const dbl = now - lastTap.t < 400 && lastTap.w === (r.dataset.w || r.dataset.l);
+  lastTap = { t: now, w: r.dataset.w || r.dataset.l };
+  // double-click / double-tap selects the whole line
+  if (r.dataset.line || dbl) return selectLine(r.dataset.l);
   selectWord(r.dataset.w, r.dataset.l);
 }
 
@@ -428,7 +432,7 @@ function drawSel() {
   L.appendChild(d);
 }
 
-function openEditPane() {
+function openEditPane(focus = true) {
   const s = S.sel; showPane("edit"); drawSel();
   const orig = s.ids.map((i) => ocrText(i)).join(" ");
   $("#edit-title").textContent = s.kind === "line" ? "Edit line" : s.kind === "manual" ? "Edit region" : "Edit text";
@@ -456,7 +460,7 @@ function openEditPane() {
   const fit = e && S.info[S.page]?.[e.id]?.style;
   $("#style-summary").textContent = fit ? `· ${fit.family}${fit.bold ? " bold" : ""} ${fit.size_px}px` : "";
   refreshSelWarnings();
-  if (innerWidth > 820 && !s.locked) setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  if (focus && innerWidth > 820 && !s.locked) setTimeout(() => { inp.focus(); inp.select(); }, 30);
   ensureSelVisible();
 }
 function ensureSelVisible() {
@@ -495,6 +499,8 @@ function applyEdit(text, opts = {}) {
     if (!existing) S.doc.edits.push(e);
   });
   toast(text ? "Text replaced" : "Text deleted");
+  if (S.sel) openEditPane(false);
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
 }
 function revertEdit() {
   const e = S.sel && findEdit(S.sel.ids); if (!e) return;
@@ -548,7 +554,7 @@ function afterChange(historyNav = false) {
   for (let i = 0; i < S.meta.pages.length; i++) renderPatches(i);
   drawRegions(); renderChanges();
   if (!$("#pane-review").hidden) renderReview();
-  if (historyNav && S.sel) { const e = findEdit(S.sel.ids); if (!e && S.sel.kind === "manual" && !lineById(S.sel.line)) clearSel(); else openEditPane(); }
+  if (historyNav && S.sel) { const e = findEdit(S.sel.ids); if (!e && S.sel.kind === "manual" && !lineById(S.sel.line)) clearSel(); else openEditPane(false); }
 }
 function scheduleSave() { clearTimeout(S.saveTimer); S.saveTimer = setTimeout(flushSave, 350); }
 async function flushSave() {
@@ -756,7 +762,13 @@ function initEditor() {
   $("#pg-prev").onclick = () => loadPage(S.page - 1, true); $("#pg-next").onclick = () => loadPage(S.page + 1, true);
   $("#show-boxes").onchange = drawRegions;
   $("#panel-grip").onclick = () => $("#panel").classList.toggle("collapsed");
-  for (const m of ["#compare", "#export"]) $(m).addEventListener("click", (e) => { if (e.target.id === m.slice(1)) $(m).hidden = true; });
+  // close a modal by tapping its backdrop — only when the press started on the backdrop itself
+  // (on touch screens the tap that opened the modal is followed by a "ghost" click on it)
+  for (const m of ["#compare", "#export"]) {
+    let downOnBackdrop = false;
+    $(m).addEventListener("pointerdown", (e) => { downOnBackdrop = e.target.id === m.slice(1); });
+    $(m).addEventListener("click", (e) => { if (downOnBackdrop && e.target.id === m.slice(1)) $(m).hidden = true; downOnBackdrop = false; });
+  }
   addEventListener("keydown", (e) => {
     if ($("#screen-editor").hidden) return;
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
