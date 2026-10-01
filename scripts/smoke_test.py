@@ -1,7 +1,9 @@
 """End-to-end smoke test against a RUNNING TrueEdit server (real browser, real OCR).
 
     scripts/run.sh &                       # start the app
-    .venv/bin/python scripts/smoke_test.py [http://127.0.0.1:8000] [samples/order_photo.jpg]
+    .venv/bin/python scripts/smoke_test.py [URL] [document] [field-to-edit] [new-text]
+    e.g.  scripts/smoke_test.py http://127.0.0.1:8000 samples/invoice_photo.jpg Priya Margaret
+    (field defaults to the customer first name of the bundled samples)
 
 Needs the test tools:  scripts/setup.sh --dev
 Prints PASS/FAIL per check; exit code 0 only if every check passes.
@@ -23,6 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 URL = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000").rstrip("/")
 SAMPLE = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "samples" / "order_photo.jpg"
+FIELD = sys.argv[3] if len(sys.argv) > 3 else None
+NEW = sys.argv[4] if len(sys.argv) > 4 else "Michael"
 CHROME = os.environ.get("TRUEEDIT_CHROME", "/opt/pw-browsers/chromium-1194/chrome-linux/chrome")
 OUT = Path(tempfile.mkdtemp(prefix="trueedit-smoke-"))
 
@@ -80,6 +84,8 @@ def main():
         n_words = sum(len(r["words"]) for r in A["regions"])
         check("OCR completes", n_words > 50, f"{n_words} words, {len(A['regions'])} lines in {time.time() - t:.0f}s")
 
+        field = None
+
         def wid(text):
             return next((w["id"] for r in A["regions"] for w in r["words"] if w["text"] == text), None)
 
@@ -93,11 +99,14 @@ def main():
             page.wait_for_selector("#pane-edit:not([hidden])")
 
         # 5. detected text is editable
-        target = wid("Daniel")
-        check("customer first name detected", target is not None)
+        field = FIELD or next((t for t in ("Daniel", "Priya") if wid(t)), "Daniel")
+        target = wid(field)
+        check(f"field to edit detected ('{field}')", target is not None)
+        if target is None:
+            raise RuntimeError(f"OCR did not find '{field}'")
         focus_and_click(target)
         check("detected text becomes editable",
-              page.input_value("#edit-input") == "Daniel" and page.is_enabled("#edit-input") and page.is_enabled("#btn-apply"))
+              page.input_value("#edit-input") == field and page.is_enabled("#edit-input") and page.is_enabled("#btn-apply"))
 
         # 6. logo / barcode locked
         labels = page.eval_on_selector_all("#region-layer .g span", "e => e.map(x => x.textContent)")
@@ -114,7 +123,7 @@ def main():
 
         # 7. edit one field
         focus_and_click(target)
-        page.fill("#edit-input", "Michael")
+        page.fill("#edit-input", NEW)
         page.click("#btn-apply")
         page.wait_for_function("document.querySelectorAll('#patch-layer img').length === 1", timeout=60_000)
         page.wait_for_timeout(800)  # autosave
@@ -147,7 +156,7 @@ def main():
         check("undo removes the edit", page.evaluate("__trueedit.doc.edits.length") == 0)
         page.click("#btn-redo")
         page.wait_for_function("document.querySelectorAll('#patch-layer img').length === 1", timeout=30_000)
-        check("redo restores the edit", page.evaluate("__trueedit.doc.edits[0].text") == "Michael")
+        check("redo restores the edit", page.evaluate("__trueedit.doc.edits[0].text") == NEW)
         page.wait_for_timeout(800)
 
         # 9. export
@@ -176,7 +185,7 @@ def main():
     pg = doc[0]
     check("exported PDF reopens", doc.page_count == 1, f"{doc.page_count} page, {pg.rect.width:.0f}x{pg.rect.height:.0f} pt")
     txt = pg.get_text()
-    check("PDF text layer has the edit (Michael) and not the old name (Daniel)", "Michael" in txt and "Daniel" not in txt)
+    check(f"PDF text layer has the edit ({NEW}) and not the old text ({field})", NEW in txt and field not in txt)
     H, W = edited.shape[:2]
     pix = pg.get_pixmap(matrix=pymupdf.Matrix(W / pg.rect.width, H / pg.rect.height), alpha=False)
     raster = cv2.cvtColor(np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 3), cv2.COLOR_RGB2BGR)
@@ -190,7 +199,7 @@ def main():
     crop = raster[max(0, y0 - 10):y1 + 10, max(0, x0 - 10):x1 + 60]
     boxes = sorted(m["det"](crop, limit_side=1600), key=lambda b: b.quad[:, 0].min())
     read = " ".join(r.text for r in m["rec"]([crop_quad(crop, b.quad)[0] for b in boxes]))
-    check("edited name reads back from the exported PDF", read.replace(" ", "").startswith("Michael"), repr(read))
+    check("edited text reads back from the exported PDF", read.replace(" ", "").startswith(NEW.replace(" ", "")), repr(read))
 
 
 if __name__ == "__main__":
