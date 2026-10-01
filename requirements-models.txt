@@ -1,0 +1,4 @@
+# OCR model weights shipped on PyPI. Install with:  pip install --no-deps -r requirements-models.txt
+# (their declared dependencies would pull a second, conflicting OpenCV build)
+onnxocr==3.1.0              # PaddleOCR PP-OCRv5 det/rec/cls models (ONNX)
+rapidocr-onnxruntime==1.4.4 # PaddleOCR PP-OCRv4 recognition model (secondary opinion)

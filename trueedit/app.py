@@ -17,12 +17,18 @@ from . import export as X
 from . import jobs
 from . import storage as S
 from .editing import EditError, render_page_edits
-from .ingest import MAX_UPLOAD_BYTES, InputError, load_document, sniff
+from .ingest import MAX_UPLOAD_BYTES, InputError, load_document
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 VERSION = "1.0.0"
 
 app = FastAPI(title="TrueEdit OCR", version=VERSION)
+
+
+@app.on_event("startup")
+def _startup():
+    # drop abandoned projects (default: untouched for 7 days)
+    S.cleanup(float(os.environ.get("TRUEEDIT_RETENTION_DAYS", "7")) * 86400)
 
 
 def err(status: int, code: str, message: str, hint: str | None = None, **extra):

@@ -1,7 +1,7 @@
 """Gate 3 — OCR accuracy & placement on realistic photographed documents (ground truth from the DOM)."""
 import pytest
 
-from conftest import save_result
+from helpers import RESULTS, save_result
 
 KEY_FIELDS = ["first_name", "last_name", "item_desc", "reference", "order_no", "qty", "price", "amount",
               "subtotal", "tax", "total"]
@@ -13,7 +13,7 @@ def evals():
 
     out = {}
     for case in ["photo", "invoice", "clean", "rot90", "exif", "lowres"]:
-        s, A = eval_ocr.run(case, overlay=str(__import__("conftest").RESULTS / f"ocr_overlay_{case}.jpg"))
+        s, A = eval_ocr.run(case, overlay=str(RESULTS / f"ocr_overlay_{case}.jpg"))
         out[case] = (s, A)
         save_result(f"ocr_eval_{case}.json", s)
     return out

@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import pytest
 
-from conftest import RESULTS, save_result
+from helpers import RESULTS, save_result
 from helpers import changed_mask, find_line, find_word, grow, read_text, save_diff
 from trueedit import storage as S
 from trueedit.render import composite

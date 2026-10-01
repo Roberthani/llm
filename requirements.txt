@@ -8,6 +8,5 @@ pillow>=10.3
 pillow-heif>=0.18
 pymupdf>=1.24
 onnxruntime>=1.18
-onnxocr==3.1.0              # ships PaddleOCR PP-OCRv5 det/rec/cls ONNX models (installed with --no-deps, see README)
-rapidocr-onnxruntime==1.4.4 # ships PP-OCRv4 recognition model (secondary opinion)
-pytesseract>=0.3.10         # needs the `tesseract-ocr` system package (secondary opinion)
+pytesseract>=0.3.10   # needs the `tesseract-ocr` system package (secondary OCR opinion)
+pyyaml>=6

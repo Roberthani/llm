@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from helpers import upload, wait_ready  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 FX = ROOT / "tests" / "fixtures" / "out"
 RESULTS = ROOT / "test-results"
@@ -36,16 +39,6 @@ def client():
 
     with TestClient(app) as c:
         yield c
-
-
-def wait_ready(client, pid, timeout=300):
-    t = time.time()
-    while time.time() - t < timeout:
-        st = client.get(f"/api/projects/{pid}/status").json()
-        if st["status"] in ("ready", "error"):
-            return st
-        time.sleep(0.3)
-    raise TimeoutError(pid)
 
 
 _PROJECTS: dict[str, str] = {}
@@ -75,5 +68,3 @@ def project(client):
     return get
 
 
-def save_result(name: str, data):
-    (RESULTS / name).write_text(json.dumps(data, indent=1, default=str))

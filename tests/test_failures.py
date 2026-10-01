@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from conftest import FX, upload, wait_ready
+from helpers import FX, upload, wait_ready
 from helpers import changed_mask, find_word, read_text
 from trueedit import jobs
 from trueedit import storage as S

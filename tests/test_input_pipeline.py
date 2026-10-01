@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import pytest
 
-from conftest import FX, upload
+from helpers import FX, upload
 from trueedit.ingest import InputError, load_document
 
 

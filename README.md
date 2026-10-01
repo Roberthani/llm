@@ -1,0 +1,118 @@
+# TrueEdit OCR
+
+Edit text in a photographed or scanned document — and change nothing else.
+
+Upload a photo or PDF → TrueEdit flattens and reads the page → click any text → type the
+replacement → compare → export. Only the pixels of the text you edit change; logos, barcodes,
+tables, borders and every untouched word stay bit-identical to the original.
+
+## Quick start
+
+```bash
+sudo apt-get install -y tesseract-ocr   # optional secondary OCR engine (recommended)
+scripts/setup.sh                        # venv, dependencies, OCR models, test fixtures
+scripts/run.sh                          # http://127.0.0.1:8000   (HOST / PORT env vars to change)
+```
+
+Run the tests (real OCR, real browser — nothing mocked in the main path):
+
+```bash
+.venv/bin/python -m pytest              # everything (~15 min on 4 CPU cores)
+.venv/bin/python -m pytest -m "not e2e" # API / pipeline only
+.venv/bin/python scripts/eval_ocr.py photo --overlay /tmp/ocr.jpg   # accuracy vs ground truth
+```
+
+Test artefacts (diff images, OCR overlays, exported files, metrics JSON) land in `test-results/`.
+
+## Workflow
+
+| Step | What happens |
+|---|---|
+| Upload | JPG, PNG, HEIC, WEBP, TIFF, BMP, PDF (multi-page, vector or scanned). Type is checked by content, not extension. |
+| Analyze | Runs in a background worker with live progress. Original file and decoded original are never modified. |
+| Review | Uncertain readings are listed instead of guessed: low confidence, unclear characters, engine disagreement, ambiguous numbers, overlapping regions, uncertain table cells. |
+| Edit | Click a word (double-click/tap for the whole line) or draw a region. Replace, delete, restyle, nudge, resize/move the area, find & replace, undo/redo. |
+| Compare | Side by side, swipe, overlay/blink, and a changed-pixel map with the exact count of pixels changed and how many lie outside the edited areas. |
+| Export | PDF (original page size, lossless or compact, searchable text layer), PNG, JPG, or a `.trueedit` project file to keep editing later. |
+
+## How it works
+
+```
+upload ─► ingest (EXIF, PDF raster @≤300 dpi) ─► preprocess ─► analyse ─► edit (patches) ─► export
+                                                 │                │
+               original.png (untouched) ◄────────┤                ├─ PP-OCRv5 det (2 scales) + rec
+               canvas.png  = warp(original)  ◄───┤                ├─ PP-OCRv4 + Tesseract 2nd opinion
+               ocr_input   = enhanced copy   ◄───┘                ├─ layout: rulings, tables, cells,
+                             (OCR only)                           │   barcode, logo/graphics, whitespace
+                                                                  └─ words, fonts, weight, colour, align
+```
+
+* **Preprocessing** (`trueedit/preprocess.py`): page boundary detection with sub-pixel corner
+  fitting → perspective correction (snapped to Letter/A4/Legal when the aspect matches) →
+  0/90/180/270° orientation from text-line geometry + the PP-OCR direction classifier → deskew.
+  The editable canvas is only geometrically resampled. Shadow/illumination flattening, contrast
+  normalisation, denoise and sharpening are applied to a *separate* OCR copy.
+* **OCR** (`trueedit/ocr/`): PaddleOCR PP-OCRv5 detection at two scales (small text and isolated
+  glyphs) and recognition with per-character confidence and position (from CTC time steps).
+  Lines that are low-confidence, contain look-alike characters in numbers, or have an
+  unexplained gap are re-read by PP-OCRv4 and Tesseract; agreement confirms, two engines
+  against one corrects-and-flags, numeric context breaks ties, anything else is flagged.
+  Word boxes come from ink segmentation aligned with recognised characters (tight boxes,
+  missing spaces recovered).
+* **Editing** (`trueedit/render.py`, `trueedit/editing.py`): the original text is re-rendered in
+  candidate fonts over its own pixels; a least-squares model (darkness = ink contrast ×
+  blurred glyph coverage) picks family, weight, size, width, blur and ink colour. The edit then
+  removes only that word's ink (hysteresis mask, neighbours and rulings protected), inpaints
+  the paper locally, matches sensor noise, and draws the replacement on the original baseline
+  with the same alignment. If the new text is longer, the following words of the line are
+  *moved* pixel-for-pixel (not re-drawn); if there is no room it condenses ≤12 % / shrinks
+  ≤15 % and warns. Each edit returns a patch + exact changed-pixel mask; everything else is
+  untouched by construction.
+* **Export** (`trueedit/export.py`): image inputs → PDF with the edited page at its physical size
+  (detected paper size, else DPI) plus an invisible OCR text layer. Vector PDF inputs → the
+  *original PDF* is kept; old text under edits is redacted (removed, not just covered) and only
+  the changed pixels are overlaid, so untouched content stays vector and selectable.
+
+## API (summary)
+
+`POST /api/projects` (multipart `file`) · `GET /api/projects/{id}` · `GET …/status` ·
+`POST …/analyze {mode: full|fast|manual}` · `GET …/pages/{n}/analysis` ·
+`GET …/pages/{n}/image/{canvas|original|ocr}` · `GET/PUT …/edits` ·
+`POST …/pages/{n}/render {edits, regions}` · `POST …/pages/{n}/ocr-region {bbox}` ·
+`GET …/pages/{n}/fidelity` · `GET …/pages/{n}/diff.png` · `POST …/export {format: pdf|png|jpg|project}` ·
+`POST /api/projects/import` · `GET /api/health`.
+
+Errors are JSON `{error: {code, message, hint}}`; analysis failures carry `recovery` actions
+(`retry`, `retry_fast`, `manual`).
+
+## Configuration
+
+| Variable | Default | |
+|---|---|---|
+| `TRUEEDIT_DATA` | `./data/projects` | project storage |
+| `TRUEEDIT_TIME_LIMIT` | `240` | analysis time limit per page (s) |
+| `TRUEEDIT_WORKERS` | `1` | concurrent analysis jobs |
+| `TRUEEDIT_OCR_THREADS` | CPU count | ONNX Runtime threads |
+| `TRUEEDIT_RETENTION_DAYS` | `7` | delete projects untouched for this long (on start-up) |
+| `TRUEEDIT_FAULT` | — | test-only fault injection: `ocr_crash`, `ocr_unavailable`, `ocr_slow` |
+
+## Known limitations
+
+* Validated on synthetic-but-realistic photographed documents (rendered, then perspective,
+  fold, shadow, blur, noise and JPEG applied) with exact ground truth; not yet on a corpus of
+  real phone photos.
+* No true dewarping of curved/crumpled pages: folds are tolerated (line-local editing), but
+  strongly curved text lines are not straightened.
+* Replacement glyphs come from bundled fonts (Liberation / DejaVu, metric-compatible with
+  Arial / Times / Courier). Documents set in other typefaces get the closest match; weight is
+  ambiguous on very blurry thin text.
+* Handwriting, vertical text, and non-Latin editing are not supported (PP-OCRv5 can read many
+  scripts, but the replacement fonts are Latin-focused).
+* Tables need visible rulings (full grid or horizontal rules); whitespace-only tables are read
+  line by line.
+* Single-process server with in-memory job status; no authentication — run it locally or
+  behind your own auth.
+
+Model weights: PaddleOCR PP-OCRv5/v4 (Apache-2.0) via the `onnxocr` and `rapidocr-onnxruntime`
+PyPI packages. Fonts: Liberation (SIL OFL 1.1) and DejaVu (Bitstream Vera licence), see
+`trueedit/fonts/`.

@@ -7,7 +7,7 @@ import numpy as np
 import pymupdf
 import pytest
 
-from conftest import RESULTS, save_result
+from helpers import FX, RESULTS, save_result
 from helpers import changed_mask, find_line, find_word, read_text
 from test_editing import CASES, make_edit, page_state
 from trueedit import export as X
@@ -105,7 +105,7 @@ def test_pdf_export_vector_input_keeps_vectors(client, project):
     client.put(f"/api/projects/{pid}/edits", json={"edits": eds})
     _, edited, _ = X.edited_page(pid, 0)
     pdf = export(client, pid, "pdf")
-    src = pymupdf.open(stream=(__import__("conftest").FX / "order.pdf").read_bytes(), filetype="pdf")
+    src = pymupdf.open(stream=(FX / "order.pdf").read_bytes(), filetype="pdf")
     img, doc = rasterize(pdf, 0, (canvas.shape[1], canvas.shape[0]))
     assert doc.page_count == 1 and doc[0].rect == src[0].rect
     txt = doc[0].get_text()
@@ -128,7 +128,7 @@ def test_pdf_export_multipage(client, project):
     client.put(f"/api/projects/{pid}/edits", json={"edits": eds})
     pdf = export(client, pid, "pdf")
     doc = pymupdf.open(stream=pdf, filetype="pdf")
-    src = pymupdf.open(stream=(__import__("conftest").FX / "order_multipage.pdf").read_bytes(), filetype="pdf")
+    src = pymupdf.open(stream=(FX / "order_multipage.pdf").read_bytes(), filetype="pdf")
     assert doc.page_count == 3
     for i in range(3):
         assert doc[i].rect == src[i].rect

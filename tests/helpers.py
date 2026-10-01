@@ -84,3 +84,24 @@ RESULTS = _P(__file__).resolve().parents[1] / "test-results"
 def save_result(name, data):
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / name).write_text(_json.dumps(data, indent=1, default=str))
+
+
+def wait_ready(client, pid, timeout=300):
+    import time
+    t = time.time()
+    while time.time() - t < timeout:
+        st = client.get(f"/api/projects/{pid}/status").json()
+        if st["status"] in ("ready", "error"):
+            return st
+        time.sleep(0.3)
+    raise TimeoutError(pid)
+
+
+def upload(client, name, wait=True):
+    r = client.post("/api/projects", files={"file": (name, (FX / name).read_bytes())})
+    assert r.status_code == 201, r.text
+    pid = r.json()["id"]
+    if wait:
+        st = wait_ready(client, pid)
+        assert st["status"] == "ready", st
+    return pid
