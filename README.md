@@ -43,7 +43,16 @@ baked in; ~1.1 GB image) and a `railway.json`. Memory: ~0.5–0.7 GB steady, ~1 
 analysis — give it **2 GB RAM**. Set `TRUEEDIT_PASSWORD` so the link isn't open to anyone
 (browser asks for it once; any username). `/api/health` stays public for health checks.
 
-**Railway (recommended, ~5 minutes):**
+**Cloudflare (Containers, deployed by GitHub Actions):** the `cloudflare/` folder holds a Worker
+that fronts one container (`standard-2`: 1 vCPU, 6 GiB) running this Dockerfile.
+`.github/workflows/deploy-cloudflare.yml` deploys on every push to this branch (or on demand
+from the Actions tab), sets the password, waits for the container, then runs
+`scripts/smoke_test.py` against the live `*.workers.dev` URL. It needs three repository secrets:
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TRUEEDIT_PASSWORD`. Cloudflare Containers
+require the Workers Paid plan. Manual alternative: `cd cloudflare && npm ci && npx wrangler deploy`
+(needs Docker) then `npx wrangler secret put TRUEEDIT_PASSWORD`.
+
+**Railway:**
 1. railway.com → sign in with GitHub → **New Project → Deploy from GitHub repo** → `Roberthani/llm`.
 2. Service → **Settings → Source**: branch `claude/tender-hopper-hzl8uf` (if not the default).
 3. Service → **Variables**: add `TRUEEDIT_PASSWORD` = a password of your choice.

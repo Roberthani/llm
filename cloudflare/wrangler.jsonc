@@ -1,0 +1,23 @@
+{
+  // TrueEdit OCR on Cloudflare Containers: a Worker in front of one container running the app.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trueedit-ocr",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "containers": [
+    {
+      "class_name": "TrueEdit",
+      "image": "../Dockerfile",
+      "image_build_context": "..",
+      // 1 vCPU, 6 GiB RAM, 12 GB disk — the app peaks around 1 GB per document
+      "instance_type": "standard-2",
+      // one instance: projects and job status live on that instance
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "TRUEEDIT", "class_name": "TrueEdit" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TrueEdit"] }],
+  "observability": { "enabled": true }
+}

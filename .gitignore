@@ -6,3 +6,7 @@ tests/fixtures/out/
 test-results/
 .pytest_cache/
 *.tmp
+cloudflare/node_modules/
+cloudflare/dist/
+cloudflare/.dev.vars
+cloudflare/.wrangler/
