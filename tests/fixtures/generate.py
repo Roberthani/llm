@@ -196,6 +196,7 @@ WORD_JS = r"""
     const fieldEl = parent.closest('[data-field]');
     const field = fieldEl ? fieldEl.getAttribute('data-field') : null;
     const style = getComputedStyle(parent);
+    const upper = style.textTransform === 'uppercase';
     const re = /\S+/g; let m;
     while ((m = re.exec(text))) {
       const r = document.createRange();
@@ -204,7 +205,7 @@ WORD_JS = r"""
       if (!rects.length) continue;
       let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
       for (const q of rects) { x0=Math.min(x0,q.left); y0=Math.min(y0,q.top); x1=Math.max(x1,q.right); y1=Math.max(y1,q.bottom); }
-      out.push({text: m[0], box:[x0,y0,x1,y1], field, font_size: parseFloat(style.fontSize), bold: parseInt(style.fontWeight) >= 600 || parent.tagName==='B'});
+      out.push({text: upper ? m[0].toUpperCase() : m[0], box:[x0,y0,x1,y1], field, font_size: parseFloat(style.fontSize), bold: parseInt(style.fontWeight) >= 600 || parent.tagName==='B'});
     }
   }
   const graphics = [];
@@ -282,7 +283,65 @@ def clean_to_photo(pts: np.ndarray, meta: dict) -> np.ndarray:
     return v[:, :2] / v[:, 2:3]
 
 
-def simulate_photo(clean: np.ndarray, seed: int = 7, out_w: int = 3024, out_h: int = 4032):
+INVOICE_ITEMS = [
+    ("BRK-4471", "Ceramic Brake Pads - Front", "1", "89.95"),
+    ("FLT-0932", "Synthetic Oil Filter", "2", "12.49"),
+    ("OIL-5W30", "Full Synthetic 5W-30 (5 qt)", "1", "38.99"),
+    ("WPR-2218", "Wiper Blade 22 in", "2", "17.50"),
+    ("LBR-0001", "Labour - Brake Service (hrs)", "1.5", "110.00"),
+]
+
+
+def invoice_html(first="Priya", last="Raman") -> str:
+    rows, sub = [], 0.0
+    for sku, desc, qty, price in INVOICE_ITEMS:
+        amt = float(qty) * float(price)
+        sub += amt
+        rows.append(f'<tr><td data-field="sku">{sku}</td><td data-field="item_desc">{desc}</td>'
+                    f'<td class="r" data-field="qty">{qty}</td><td class="r" data-field="price">{price}</td>'
+                    f'<td class="r" data-field="amount">{money(amt)}</td></tr>')
+    tax = round(sub * 0.13, 2)
+    return f"""<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body {{ margin:0; background:#fff; }}
+    body {{ width:816px; height:1056px; box-sizing:border-box; padding:54px 56px; font-family:'FreeSans',sans-serif; color:#222; font-size:12px; position:relative; }}
+    .hd {{ display:flex; justify-content:space-between; border-bottom:3px solid #b3261e; padding-bottom:12px; }}
+    .shop {{ font-size:26px; font-weight:bold; color:#b3261e; font-family:'FreeSerif',serif; }}
+    .badge {{ width:64px; height:64px; background:#b3261e; border-radius:8px; display:inline-block; vertical-align:middle; margin-right:12px; }}
+    .num {{ font-family:'FreeMono',monospace; }}
+    .inv {{ text-align:right; font-size:12px; line-height:18px; }}
+    .inv b {{ font-size:18px; }}
+    .two {{ display:flex; gap:40px; margin-top:22px; line-height:18px; }}
+    .lbl {{ color:#666; font-size:11px; text-transform:uppercase; letter-spacing:1px; }}
+    table {{ width:100%; border-collapse:collapse; margin-top:24px; }}
+    th {{ text-align:left; border-bottom:2px solid #222; padding:6px 4px; font-size:11px; }}
+    td {{ border-bottom:1px solid #bbb; padding:7px 4px; }}
+    .r {{ text-align:right; font-family:'FreeMono',monospace; }}
+    .tot {{ width:42%; margin-left:auto; margin-top:16px; }}
+    .tot td {{ border:0; padding:3px 4px; }}
+    .tot .g td {{ font-weight:bold; font-size:15px; border-top:2px solid #222; }}
+    .bc {{ position:absolute; right:56px; bottom:70px; text-align:center; }}
+    .note {{ position:absolute; left:56px; bottom:74px; width:420px; font-size:10px; color:#555; line-height:14px; }}
+    </style></head><body>
+    <div class="hd"><div data-graphic="logo"><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#b3261e"/><circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="6"/><circle cx="32" cy="32" r="6" fill="#fff"/></svg>
+      <span class="shop" data-field="logo_text">Maple Auto Parts</span></div>
+      <div class="inv"><b data-field="doc_title">INVOICE</b><br>Invoice # <span class="num" data-field="order_no">MAP-77215</span><br>
+      Date <span class="num" data-field="date">2026-08-30</span><br>PO Ref <span class="num" data-field="reference">RX-0098-B</span></div></div>
+    <div class="two"><div><div class="lbl">Bill to</div><div><span data-field="first_name">{first}</span> <span data-field="last_name">{last}</span></div>
+      <div data-field="address">77 Queen St E, Unit 4</div><div data-field="address">Brampton, ON L6V 1A6</div></div>
+      <div><div class="lbl">Vehicle</div><div data-field="vehicle">2019 Honda Civic LX</div><div>VIN <span class="num" data-field="vin">2HGFC2F59KH512094</span></div>
+      <div>Odometer <span class="num" data-field="odo">84,210 km</span></div></div></div>
+    <table><tr><th>PART #</th><th>DESCRIPTION</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">TOTAL</th></tr>{''.join(rows)}</table>
+    <table class="tot"><tr><td>Subtotal</td><td class="r" data-field="subtotal">{money(sub)}</td></tr>
+      <tr><td>HST 13%</td><td class="r" data-field="tax">{money(tax)}</td></tr>
+      <tr class="g"><td>Amount due</td><td class="r" data-field="total">{money(sub + tax)}</td></tr>
+      <tr><td>Warranty</td><td class="r" data-field="warranty">N/A</td></tr></table>
+    <div class="note" data-field="fine">Parts warranty per manufacturer terms. Labour warranty 12 months or 20,000 km,
+      whichever comes first. Keep this invoice for your records.</div>
+    <div class="bc" data-graphic="barcode">{barcode_svg('MAP77215')}<div class="num" data-field="barcode_text">MAP77215</div></div>
+    </body></html>"""
+
+
+def simulate_photo(clean: np.ndarray, seed: int = 7, out_w: int = 3024, out_h: int = 4032, harsh: bool = False):
     rng = np.random.default_rng(seed)
     h, w = clean.shape[:2]
     fold = {"fold_y": h * 0.47, "fold_soft": 6.0, "fold_dx": 3.0, "fold_dy": 5.0, "w": float(w)}
@@ -300,6 +359,8 @@ def simulate_photo(clean: np.ndarray, seed: int = 7, out_w: int = 3024, out_h: i
     # 2) perspective onto a phone-sized frame
     src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
     dst = np.float32([[452, 520], [2638, 430], [2790, 3560], [300, 3655]])
+    if harsh:  # stronger tilt / rotation, page closer to the camera on one side
+        dst = np.float32([[560, 380], [2700, 640], [2600, 3820], [260, 3500]])
     dst += rng.normal(0, 6, dst.shape).astype(np.float32)
     H = cv2.getPerspectiveTransform(src, dst)
     bg = np.zeros((out_h, out_w, 3), np.float32)
@@ -322,6 +383,10 @@ def simulate_photo(clean: np.ndarray, seed: int = 7, out_w: int = 3024, out_h: i
     light = 0.78 + 0.27 * (xx / out_w) * 0.6 + 0.27 * (1 - yy / out_h) * 0.4
     blob = np.exp(-(((xx - 2500) / 700.0) ** 2 + ((yy - 3300) / 600.0) ** 2))
     light *= 1 - 0.38 * blob
+    if harsh:  # hard-edged shadow across the top-left and dimmer exposure
+        edge = 1 / (1 + np.exp(-((xx * 0.6 + yy) - 1700) / 60.0))
+        light *= 0.62 + 0.38 * edge
+        light *= 0.9
     # fold line shading: compute clean-y for each photo pixel approximately via inverse H
     Hi = np.linalg.inv(H)
     den = Hi[2, 0] * xx + Hi[2, 1] * yy + Hi[2, 2]
@@ -334,8 +399,8 @@ def simulate_photo(clean: np.ndarray, seed: int = 7, out_w: int = 3024, out_h: i
     img *= np.array([0.93, 0.98, 1.03], np.float32)  # warm white balance (BGR)
 
     # 4) optics + sensor
-    img = cv2.GaussianBlur(img, (0, 0), 1.1)
-    img += rng.normal(0, 3.5, img.shape)
+    img = cv2.GaussianBlur(img, (0, 0), 1.45 if harsh else 1.1)
+    img += rng.normal(0, 5.0 if harsh else 3.5, img.shape)
     img = np.clip(img, 0, 255).astype(np.uint8)
     meta = {"H": H.tolist(), "fold": fold, "clean_size": [w, h], "photo_size": [out_w, out_h]}
     return img, meta
@@ -378,6 +443,13 @@ def main():
     (OUT / "notes.txt").write_text("this is not a document image\n")
 
     render_pdf_pages([order_html(i, 3) for i in (1, 2, 3)], OUT / "order_multipage.pdf")
+
+    gt2 = render_html(invoice_html(), OUT / "invoice_clean.png", None)
+    (OUT / "invoice_clean.json").write_text(json.dumps(gt2, indent=1))
+    inv = cv2.imread(str(OUT / "invoice_clean.png"))
+    photo2, meta2 = simulate_photo(inv, seed=21, harsh=True)
+    write_jpeg(OUT / "invoice_photo.jpg", photo2, 80)
+    (OUT / "invoice_photo.json").write_text(json.dumps(meta2))
 
     import fitz
 

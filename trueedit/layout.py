@@ -15,6 +15,13 @@ def ink_mask(ocr_input: np.ndarray) -> np.ndarray:
     return np.where(gray < thr, 255, 0).astype(np.uint8)
 
 
+def faint_ink_mask(ocr_input: np.ndarray) -> np.ndarray:
+    """More sensitive mark mask (light grey hairlines), used only for finding rulings."""
+    gray = cv2.cvtColor(ocr_input, cv2.COLOR_BGR2GRAY) if ocr_input.ndim == 3 else ocr_input
+    paper = float(np.percentile(gray, 90))
+    return np.where(gray < min(235.0, paper - 28.0), 255, 0).astype(np.uint8)
+
+
 def detect_rulings(ink: np.ndarray, min_len: int | None = None):
     """Long horizontal / vertical strokes (table rules, borders, underlines)."""
     h, w = ink.shape
@@ -153,7 +160,8 @@ def detect_barcodes(gray: np.ndarray, ink: np.ndarray):
     return out
 
 
-def detect_graphics(canvas: np.ndarray, ink: np.ndarray, rule_mask: np.ndarray, text_h: float, barcodes):
+def detect_graphics(canvas: np.ndarray, ink: np.ndarray, rule_mask: np.ndarray, text_h: float, barcodes,
+                    word_boxes=None):
     """Non-text graphics (logos, emblems, photos, stamps): large dense components."""
     m = cv2.subtract(ink, rule_mask)
     # colour content counts as graphic too (logos are often coloured fills)
@@ -174,8 +182,16 @@ def detect_graphics(canvas: np.ndarray, ink: np.ndarray, rule_mask: np.ndarray, 
         box = [int(x), int(y), int(x + w), int(y + h)]
         if any(_overlap(box, b["box"]) > 0.5 for b in barcodes):
             continue
+        if word_boxes and any(_overlap(box, w) > 0.6 for w in word_boxes):
+            continue  # a large glyph (e.g. a heading initial), not a picture
         out.append({"kind": "graphic", "box": box, "fill": round(fill, 3)})
-    return out
+    # drop graphics nested inside other graphics (parts of the same emblem)
+    out.sort(key=lambda g: -(g["box"][2] - g["box"][0]) * (g["box"][3] - g["box"][1]))
+    kept = []
+    for g in out:
+        if not any(_overlap(g["box"], k["box"]) > 0.8 for k in kept):
+            kept.append(g)
+    return kept
 
 
 def _overlap(a, b) -> float:
@@ -198,3 +214,55 @@ def whitespace_bands(ink: np.ndarray, text_h: float, rule_mask: np.ndarray):
                 out.append({"kind": "whitespace", "box": [0, int(start), int(ink.shape[1]), int(y)]})
             start = None
     return out
+
+
+def detect_rule_tables(segs, word_boxes, existing, em: float):
+    """Tables drawn with horizontal rules only: rows between rules, columns from text alignment."""
+    hs = sorted([sg["box"] for sg in segs if sg["kind"] == "h"], key=lambda b: b[1])
+    tables = []
+    used = set()
+    for i, a in enumerate(hs):
+        if i in used:
+            continue
+        group = [a]
+        for j in range(i + 1, len(hs)):
+            b = hs[j]
+            if abs(b[0] - a[0]) < 2 * em and abs(b[2] - a[2]) < 2 * em and b[1] - group[-1][3] < 4 * em:
+                group.append(b)
+                used.add(j)
+        if len(group) < 3:
+            continue
+        box = [min(g[0] for g in group), group[0][1], max(g[2] for g in group), group[-1][3]]
+        if any(_overlap(box, t["box"]) > 0.3 for t in existing):
+            continue
+        # header row: text just above the first rule belongs to the table too
+        above = [w for w in word_boxes if w[3] <= box[1] + 2 and box[1] - w[3] < 1.6 * em and w[0] >= box[0] - em
+                 and w[2] <= box[2] + em]
+        top = min([w[1] for w in above], default=box[1]) - 4
+        ys = [top] + [(g[1] + g[3]) // 2 for g in group]
+        inside = [w for w in word_boxes if w[1] >= top - 2 and w[3] <= box[3] + 2 and w[0] >= box[0] - em and w[2] <= box[2] + em]
+        if len(inside) < 4:
+            continue
+        # columns: x ranges covered by text, split at empty gaps >= 1 em
+        cover = np.zeros(box[2] - box[0] + 2, bool)
+        for w in inside:
+            cover[max(0, w[0] - box[0]):max(0, w[2] - box[0])] = True
+        cols, x = [], 0
+        while x < len(cover):
+            if cover[x]:
+                x0 = x
+                while x < len(cover) and (cover[x] or (x + int(em) < len(cover) and cover[x:x + int(em)].any())):
+                    x += 1
+                cols.append([box[0] + x0, box[0] + x])
+            x += 1
+        if len(cols) < 2:
+            continue
+        # cell borders halfway between columns
+        xb = [box[0]] + [(cols[k][1] + cols[k + 1][0]) // 2 for k in range(len(cols) - 1)] + [box[2]]
+        cells = []
+        for r in range(len(ys) - 1):
+            for c in range(len(xb) - 1):
+                cells.append({"box": [int(xb[c]), int(ys[r]), int(xb[c + 1]), int(ys[r + 1])], "row": r, "col": c})
+        tables.append({"box": [int(box[0]), int(top), int(box[2]), int(box[3])], "rows": len(ys) - 1, "cols": len(cols),
+                       "cells": cells, "kind": "table", "ruling": "horizontal"})
+    return tables

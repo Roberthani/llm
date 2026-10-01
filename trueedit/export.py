@@ -116,7 +116,10 @@ def page_size_pt(pm: dict) -> tuple[float, float, str]:
     if pm.get("paper") in PAPER_PT:
         w, h = PAPER_PT[pm["paper"]]
         return (w, h, "paper:" + pm["paper"]) if H >= W else (h, w, "paper:" + pm["paper"])
-    dpi = pm.get("dpi") or 200.0
+    dpi = pm.get("dpi") or 0
+    if dpi < 150 or pm.get("steps") and any(s.get("step") == "perspective_correction" and "skipped" not in s
+                                              for s in pm["steps"]):
+        dpi = 200.0  # camera files carry a meaningless 72 dpi; a rectified photo has no true dpi either
     return W * 72.0 / dpi, H * 72.0 / dpi, f"dpi:{dpi:g}"
 
 

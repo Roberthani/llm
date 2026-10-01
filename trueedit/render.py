@@ -180,69 +180,122 @@ def fit_style(canvas: np.ndarray, bbox, text: str, obstacles_mask: np.ndarray | 
     if geo is None:
         return None
     gx0, gx1, gtop, gbase = geo
+    # observed darkness in grey levels; the model is  obs = contrast * blur(glyph coverage)
+    gwin = cv2.cvtColor(win, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    gbg = cv2.cvtColor(bg, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    obs = np.clip(gbg - gwin, 0, None) * (allowed > 0)
+    part_sl = []
+    for pb in (parts or [[x0, y0, x1, y1]]):
+        py0, py1 = max(0, pb[1] - wy0 - 3), max(0, pb[3] - wy0 + 3)
+        px0, px1 = max(0, pb[0] - wx0 - 3), max(0, pb[2] - wx0 + 3)
+        if py1 > py0 and px1 > px0:
+            part_sl.append((slice(py0, py1), slice(px0, px1)))
+    tot = float((obs ** 2).sum()) or 1.0
+
+    def model_err(Am):
+        res = float((obs ** 2).sum())
+        for sl in part_sl:
+            o, a = obs[sl], Am[sl]
+            aa = float((a * a).sum())
+            if aa <= 1e-6:
+                continue
+            c = max(0.0, float((o * a).sum()) / aa)
+            res += float(((o - c * a) ** 2).sum()) - float((o ** 2).sum())
+        return res / tot
+
     has_asc = any(ch.isupper() or ch.isdigit() or ch in "bdfhklt!?/()[]{}#$%&@|'\"" for ch in text)
     fams = families or ([hint["family"]] if hint.get("family") in FAMILIES else list(FAMILIES))
     bolds = [hint["bold"]] if isinstance(hint.get("bold"), bool) else [False, True]
     size0 = float(hint.get("size_px") or h / 0.9)
+    def geom(fam, bold, size, hs, sg):
+        a, px, base = text_alpha(text, fam, bold, size, hs)
+        ab = _blur(a, sg)
+        mx = float(ab.max())
+        return (a, px, base, _ink_geom(ab > 0.5 * mx) if mx > 0 else None)
+
+    def evaluate(fam, bold, size, sg_geo):
+        # size from blurred-rendering geometry (thresholds comparable with the blurred original)
+        for _ in range(3):
+            a, px, base, g2 = geom(fam, bold, size, 1.0, sg_geo)
+            if g2 is None:
+                return None
+            rh = g2[3] - g2[2]
+            oh = gbase - gtop
+            if rh <= 0 or oh <= 0:
+                return None
+            nsize = size * oh / rh
+            done = abs(nsize - size) < 0.05
+            size = nsize
+            if done:
+                break
+        a, px, base, g2 = geom(fam, bold, size, 1.0, sg_geo)
+        if g2 is None:
+            return None
+        hs = (gx1 - gx0) / max(1.0, g2[1] - g2[0])
+        if not 0.6 < hs < 1.6:
+            return None
+        a, px, base, g2 = geom(fam, bold, size, hs, sg_geo)
+        dx = gx0 - g2[0]
+        dy = gbase - g2[3]
+        placed = _shift(a, dx, dy, D.shape)
+        best = None
+        for sg in SIGMAS:
+            err = model_err(_blur(placed, sg))
+            if best is None or err < best[0]:
+                best = (err, sg)
+        err, sg = best
+        for ddx, ddy in ((0.5, 0), (-0.5, 0), (0, 0.5), (0, -0.5)):
+            e2 = model_err(_blur(_shift(a, dx + ddx, dy + ddy, D.shape), sg))
+            if e2 < err:
+                err, dx, dy = e2, dx + ddx, dy + ddy
+        return {"family": fam, "bold": bold, "size": size, "hscale": hs, "sigma": sg,
+                "score": err + 0.15 * abs(math.log(hs)), "baseline": wy0 + dy + base, "pen_x": wx0 + dx + px}
+
     results = []
     for fam in fams:
         for bold in bolds:
-            size = size0
-            for _ in range(3):
-                a, px, base = text_alpha(text, fam, bold, size)
-                g2 = _ink_geom(a > 0.5)
-                if g2 is None:
-                    break
-                rh = g2[3] - g2[2] if has_asc else g2[3] - np.median([g2[2]])
-                oh = gbase - gtop
-                if rh <= 0 or oh <= 0:
-                    break
-                nsize = size * oh / rh
-                if abs(nsize - size) < 0.05:
-                    size = nsize
-                    break
-                size = nsize
-            a, px, base = text_alpha(text, fam, bold, size)
-            g2 = _ink_geom(a > 0.5)
-            if g2 is None:
-                continue
-            hs = (gx1 - gx0) / max(1.0, g2[1] - g2[0])
-            if not 0.6 < hs < 1.6:
-                continue
-            a, px, base = text_alpha(text, fam, bold, size, hs)
-            g2 = _ink_geom(a > 0.5)
-            dx = gx0 - g2[0]
-            dy = gbase - g2[3]
-            placed = _shift(a, dx, dy, D.shape)
-            best = None
-            for s in SIGMAS:
-                A = _blur(placed, s)
-                err = float(np.mean((A - D) ** 2))
-                if best is None or err < best[0]:
-                    best = (err, s)
-            err, s = best
-            # coarse sub-pixel alignment refinement
-            for ddx, ddy in ((0.5, 0), (-0.5, 0), (0, 0.5), (0, -0.5)):
-                A = _blur(_shift(a, dx + ddx, dy + ddy, D.shape), s)
-                e2 = float(np.mean((A - D) ** 2))
-                if e2 < err:
-                    err, dx, dy = e2, dx + ddx, dy + ddy
-            score = err / max(1e-6, float(np.mean(D ** 2))) + 0.15 * abs(math.log(hs))
-            results.append({"family": fam, "bold": bold, "size": size, "hscale": hs, "sigma": s, "score": score,
-                            "baseline": wy0 + dy + base, "pen_x": wx0 + dx + px})
+            r0 = evaluate(fam, bold, size0, 0.0)
+            if r0 is not None:
+                results.append(r0)
+    # second pass: re-measure the best candidates with their own blur applied to the rendering
+    results.sort(key=lambda r: r["score"])
+    refined = []
+    pool = results[:6]
+    top = results[0]["family"] if results else None
+    for r in results[6:]:
+        if r["family"] == top and r["bold"] != results[0]["bold"] and not any(
+                p["family"] == top and p["bold"] == r["bold"] for p in pool):
+            pool.append(r)
+    for r0 in pool:
+        if r0["sigma"] > 0.5:
+            r1 = evaluate(r0["family"], r0["bold"], r0["size"], r0["sigma"])
+            if r1 is not None and r1["score"] < r0["score"]:
+                r0 = r1
+        refined.append(r0)
+    results = refined + [r for r in results[6:] if r not in pool]
     if not results:
         return None
     results.sort(key=lambda r: r["score"])
     r = results[0]
-    core = (D > 0.8) & (rough > 0)
-    if core.sum() < 3:
-        core = (D > 0.55) & (rough > 0)
-    px_ = win[core]
-    if len(px_):
-        # pure ink colour: invert the blend model pixel = bg*(1-D) + C*D on strongly covered pixels
-        Dc = D[core][:, None]
-        C = (px_.astype(np.float32) - bg[core].astype(np.float32) * (1 - Dc)) / np.maximum(Dc, 0.3)
-        color = tuple(float(v) for v in np.clip(np.median(C, 0), 0, 255))
+    a, px, base = text_alpha(text, r["family"], r["bold"], r["size"], r["hscale"])
+    A = _blur(_shift(a, r["pen_x"] - wx0 - px, r["baseline"] - wy0 - base, D.shape), r["sigma"])
+    best_sl, best_m = None, -1.0
+    for sl in part_sl:
+        m = float(A[sl].sum())
+        if m > best_m:
+            best_sl, best_m = sl, m
+    sl = best_sl or (slice(None), slice(None))
+    Aa = A[sl]
+    aa = float((Aa * Aa).sum())
+    if aa > 1e-6:
+        color = []
+        sel = Aa > 0.5
+        for ch in range(3):
+            d = (bg[sl][..., ch].astype(np.float32) - win[sl][..., ch].astype(np.float32)) * (allowed[sl] > 0)
+            c = max(0.0, float((d * Aa).sum()) / aa)
+            ref = float(np.median(bg[sl][..., ch][sel])) if sel.any() else float(np.median(bg[..., ch]))
+            color.append(float(np.clip(ref - c, 0, 255)))
+        color = tuple(color)
     else:
         color = (lo, lo, lo)
     return StyleFit(r["family"], r["bold"], r["size"], r["hscale"], r["sigma"], color, r["baseline"], r["score"],

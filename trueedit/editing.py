@@ -161,13 +161,18 @@ def build_context(canvas: np.ndarray, idx: PageIndex, edit: dict, fit_key: str |
                 tb = [min(w["bbox"][0] for w in tw), min(w["bbox"][1] for w in tw),
                       max(w["bbox"][2] for w in tw), max(w["bbox"][3] for w in tw)]
                 wkey = (key + ":" + ",".join(sorted(tids))) if key else None
-                wf_fn = lambda: R.fit_style(canvas, tb, ttext, obst_mask(tids),
-                                            {"family": lf.family, "size_px": lf.size_px})
+                long_word = len(ttext.replace(" ", "")) >= 4
+                hint_w = {"size_px": lf.size_px} if long_word else {"family": lf.family, "size_px": lf.size_px}
+                wf_fn = lambda: R.fit_style(canvas, tb, ttext, obst_mask(tids), hint_w)
                 wf = R.cached_fit(wkey, wf_fn) if wkey else wf_fn()
                 if wf is not None:
-                    ctx["fit"] = R.StyleFit(lf.family, wf.bold if len(ttext.strip()) >= 4 else lf.bold, lf.size_px,
-                                            wf.hscale if len(ttext) >= 5 else lf.hscale,
-                                            lf.sigma, wf.color, lf.baseline, wf.score)
+                    # a word may be set in a different font than the rest of its line (labels vs values)
+                    fam = wf.family if (long_word and wf.family != lf.family and wf.score < 0.85 * lf.score) else lf.family
+                    own = fam != lf.family
+                    ctx["fit"] = R.StyleFit(fam, wf.bold if long_word else lf.bold,
+                                            wf.size_px if own else lf.size_px,
+                                            wf.hscale if (len(ttext) >= 5 or own) else lf.hscale,
+                                            wf.sigma if own else lf.sigma, wf.color, lf.baseline, wf.score)
     elif edit.get("original_text"):
         ctx["fit"] = R.fit_style(canvas, bbox, edit["original_text"])
     return ctx

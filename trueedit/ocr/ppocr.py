@@ -109,12 +109,13 @@ class Detector:
 
 
 def order_quad(pts: np.ndarray) -> np.ndarray:
-    pts = np.asarray(pts, np.float32)
-    s = pts.sum(1)
-    d = np.diff(pts, axis=1).ravel()
-    tl, br = pts[np.argmin(s)], pts[np.argmax(s)]
-    tr, bl = pts[np.argmin(d)], pts[np.argmax(d)]
-    return np.array([tl, tr, br, bl], np.float32)
+    """Order 4 points clockwise starting at top-left (robust for any rotation)."""
+    pts = np.asarray(pts, np.float32).reshape(4, 2)
+    c = pts.mean(0)
+    ang = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0])
+    pts = pts[np.argsort(ang)]  # clockwise in image coordinates (y down)
+    start = int(np.argmin(pts[:, 0] + pts[:, 1]))
+    return np.roll(pts, -start, axis=0)
 
 
 def crop_quad(img: np.ndarray, quad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -124,9 +125,16 @@ def crop_quad(img: np.ndarray, quad: np.ndarray) -> tuple[np.ndarray, np.ndarray
     h = int(round(max(np.linalg.norm(q[0] - q[3]), np.linalg.norm(q[1] - q[2]))))
     w, h = max(w, 2), max(h, 2)
     dst = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    if abs(cv2.contourArea(q)) < 1.0:
+        # degenerate quad: fall back to its axis-aligned bounding box
+        x0, y0 = np.floor(q.min(0)).astype(int)
+        x1, y1 = np.ceil(q.max(0)).astype(int)
+        q = np.float32([[x0, y0], [max(x1, x0 + 2), y0], [max(x1, x0 + 2), max(y1, y0 + 2)], [x0, max(y1, y0 + 2)]])
+        w, h = int(q[1][0] - q[0][0]), int(q[2][1] - q[1][1])
+        dst = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
     M = cv2.getPerspectiveTransform(q, dst)
     crop = cv2.warpPerspective(img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-    return crop, np.linalg.inv(M)
+    return crop, np.linalg.pinv(M)
 
 
 # ---------------------------------------------------------------- recognition

@@ -158,6 +158,7 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
     prog(0.02, "Finding layout")
     ink_all = L.ink_mask(ocr_input)
     hm, vm, segs = L.detect_rulings(ink_all)
+    _, _, faint_segs = L.detect_rulings(L.faint_ink_mask(ocr_input))
     rule_mask = cv2.bitwise_or(hm, vm)
     rule_mask_d = cv2.dilate(rule_mask, np.ones((3, 3), np.uint8))
     ink = cv2.subtract(ink_all, rule_mask_d)
@@ -224,7 +225,7 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
     for k, ln in enumerate(lines):
         minc = min(c["conf"] for c in ln["chars"])
         ambiguous = _is_numeric_like(ln["text"]) and any(ch in CONFUSABLE for ch in ln["text"])
-        if ln["conf"] < SECOND_OPINION_CONF or minc < 0.85 or ambiguous:
+        if ln["conf"] < SECOND_OPINION_CONF or minc < 0.85 or ambiguous or _missing_space_suspect(ln, ink, scale, W, H):
             need.append(k)
     if second_opinion and need:
         v4 = rec4([lines[k]["crop"] for k in need]) if rec4 else [None] * len(need)
@@ -246,10 +247,15 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
                                   for a in alts]
             if verdict == "confirmed":
                 ln["conf"] = max(ln["conf"], min(0.97, max(c["conf"] for c in cands)))
-                same = [c["text"] for c in cands if re.sub(r"\s+", "", c["text"]) == re.sub(r"\s+", "", ln["text"])]
-                best = max(same, key=lambda t: t.count(" "))
-                if best.count(" ") > ln["text"].count(" "):
-                    ln["spaced_text"] = re.sub(r"\s+", " ", best.strip())
+            if chosen["engine"] == "ppocr_v5":
+                # word spaces another engine saw (PP-OCR tends to drop them between mixed fonts)
+                best = ln["text"]
+                for c in cands[1:]:
+                    t = transfer_spaces(ln["text"], c["text"])
+                    if t.count(" ") > best.count(" "):
+                        best = t
+                if best != ln["text"]:
+                    ln["spaced_text"] = best
             elif chosen["engine"] != "ppocr_v5":
                 ln["replaced_text"] = chosen["text"]
                 ln["conf"] = float(chosen["conf"])
@@ -261,7 +267,8 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
     check_time()
 
     text_h = float(np.median([r["style"]["font_size_px"] or 0 for r in regions])) if regions else 24.0
-    graphics = L.detect_graphics(canvas, ink_all, rule_mask_d, max(8.0, text_h * 0.75), barcodes)
+    graphics = L.detect_graphics(canvas, ink_all, rule_mask_d, max(8.0, text_h * 0.75), barcodes,
+                                 [w["bbox"] for r in regions for w in r["words"]])
     whitespace = L.whitespace_bands(ink_all, max(8.0, text_h * 0.75), rule_mask_d)
 
     low_res = bool(regions) and text_h < 16
@@ -271,6 +278,18 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
             if r["conf"] < 0.985 and r["role"] == "text":
                 r["flags"].append({"type": "low_resolution",
                                    "message": "Text is very small in this image; verify this reading"})
+    wbs = [w["bbox"] for r in regions for w in r["words"]]
+    # faint hairlines help find row rules, but a real rule never runs through the middle of text
+    # (folds and shadow edges do)
+    def through_text(b):
+        return any(w[0] < b[2] and b[0] < w[2] and w[1] + 0.25 * (w[3] - w[1]) < (b[1] + b[3]) / 2 < w[3] - 0.25 * (w[3] - w[1])
+                   for w in wbs)
+    faint = [sg for sg in faint_segs if sg["kind"] == "h" and sg["thickness"] <= max(6, text_h * 0.7)
+             and (sg["box"][2] - sg["box"][0]) < 0.97 * W and not through_text(sg["box"])]
+    extra = L.detect_rule_tables(faint, wbs, tables, text_h)
+    for k, t in enumerate(extra):
+        t["id"] = f"t{len(tables) + k}"
+    tables += extra
     _assign_tables(regions, tables)
     _classify_roles(regions, graphics, barcodes)
     _weights(regions)
@@ -304,6 +323,62 @@ def analyze_page(canvas: np.ndarray, ocr_input: np.ndarray, models, page: int = 
     return {"warnings": warnings, "size": [W, H], "text_height": round(text_h, 2), "regions": regions, "tables": tables,
             "barcodes": barcodes, "graphics": graphics, "rulings": segs[:500], "whitespace": whitespace,
             "review": review, "stats": stats}
+
+
+def transfer_spaces(primary: str, other: str) -> str:
+    """Insert into `primary` the word spaces found in `other`, where the surrounding characters agree."""
+    import difflib
+
+    a = primary.replace(" ", "")
+    b_chars, b_space_before = [], []
+    sp = False
+    for ch in other.strip():
+        if ch.isspace():
+            sp = True
+            continue
+        b_chars.append(ch)
+        b_space_before.append(sp)
+        sp = False
+    b = "".join(b_chars)
+    # primary's own spaces: positions (in de-spaced index) that have a space before them
+    prim_space = set()
+    k = 0
+    for ch in primary:
+        if ch == " ":
+            prim_space.add(k)
+        else:
+            k += 1
+    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    add = set()
+    for blk in sm.get_matching_blocks():
+        for t in range(1, blk.size):  # space strictly inside a matched run, both neighbours agree
+            if b_space_before[blk.b + t]:
+                add.add(blk.a + t)
+        # space right at a block start, if the previous char also matched
+        if blk.size and blk.b > 0 and b_space_before[blk.b] and blk.a > 0:
+            add.add(blk.a)
+    spaces = prim_space | add
+    out = []
+    for i, ch in enumerate(a):
+        if i in spaces and i > 0:
+            out.append(" ")
+        out.append(ch)
+    return "".join(out)
+
+
+def _missing_space_suspect(ln, ink, scale, W, H) -> bool:
+    """A clear ink gap with no recognised space near it suggests a dropped word space."""
+    seg = _ink_segments(ink, ln["det"].quad / scale, W, H)
+    if not seg:
+        return False
+    atoms, em = seg
+    xs = _char_positions(ln, scale)
+    spaces = [x for c, x in zip(ln["chars"], xs) if c["c"].isspace()]
+    for a, b in zip(atoms, atoms[1:]):
+        gap = b["x0"] - a["x1"]
+        if gap >= 0.22 * em and not any(a["x1"] - 0.3 * em <= x <= b["x0"] + 0.3 * em for x in spaces):
+            return True
+    return False
 
 
 def _multiscale(det, img, limit=2400):
@@ -461,7 +536,7 @@ def _build_line_regions(ln, k, page, scale, canvas, ink, W, H, gray=None):
             gap = a["x0"] - s0["x1"]
             tol = 0.25 * em
             has_space = any(s0["x1"] - tol <= x <= a["x0"] + tol for x in spaces)
-            split = (gap >= max(0.3 * em, 2.5 * med_gap)) or (has_space and gap >= max(0.17 * em, 1.5 * med_gap))
+            split = (gap >= max(0.3 * em, 2.5 * med_gap)) or (has_space and gap >= max(0.12 * em, 1.1 * med_gap))
             if split:
                 segs.append(dict(a))
             else:

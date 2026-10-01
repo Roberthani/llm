@@ -32,7 +32,9 @@ CASES = {
     "lowres": ("order_lowres.jpg", "photo", 800 / 4032),
     "rot90": ("order_photo_rot90.jpg", "photo_rot90", None),
     "exif": ("order_photo_exif.jpg", "photo", None),
+    "invoice": ("invoice_photo.jpg", "photo", None),
 }
+GT = {"invoice": ("invoice_clean.json", "invoice_photo.json")}
 
 
 def iou(a, b):
@@ -60,8 +62,9 @@ def gt_to_canvas(box, mode, meta, T, shrink):
 
 def run(case: str, overlay: str | None = None):
     fname, mode, shrink = CASES[case]
-    gt = json.loads((FX / "order_clean.json").read_text())
-    meta = json.loads((FX / "order_photo.json").read_text())
+    gj, mj = GT.get(case, ("order_clean.json", "order_photo.json"))
+    gt = json.loads((FX / gj).read_text())
+    meta = json.loads((FX / mj).read_text())
     doc = load_document((FX / fname).read_bytes(), fname)
     pg = doc.pages[0]
     models = load_models()
@@ -77,6 +80,13 @@ def run(case: str, overlay: str | None = None):
             if v > bi:
                 bi, best = v, w
         # words may be merged (e.g. "N/A" next to punctuation): accept containment match
+        if best is not None and bi <= 0.3:
+            # tiny glyphs (e.g. a dash): accept a word whose centre lies inside the ground-truth box
+            for w in words:
+                cx, cy = (w["bbox"][0] + w["bbox"][2]) / 2, (w["bbox"][1] + w["bbox"][3]) / 2
+                if gb[0] <= cx <= gb[2] and gb[1] <= cy <= gb[3] and w["text"] == g["text"]:
+                    best, bi = w, max(bi, 0.31)
+                    break
         hit = best is not None and bi > 0.3
         text_ok = hit and best["text"].strip(".,:;") == g["text"].strip(".,:;")
         res.append({"gt": g["text"], "field": g["field"], "iou": round(bi, 3),
