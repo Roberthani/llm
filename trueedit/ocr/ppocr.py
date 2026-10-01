@@ -227,10 +227,10 @@ class Classifier:
 def load_models():
     """Load and cache all models. Raises OCRUnavailable with a clear message on failure."""
     with _LOCK:
-        if "models" in _CACHE:
-            return _CACHE["models"]
         if os.environ.get("TRUEEDIT_FAULT") == "ocr_unavailable":
             raise OCRUnavailable("OCR engine failed to start (fault injected for testing)")
+        if "models" in _CACHE:
+            return _CACHE["models"]
         v5 = _pkg_dir("onnxocr")
         if v5 is None:
             raise OCRUnavailable("PP-OCRv5 models not installed (pip install onnxocr)")

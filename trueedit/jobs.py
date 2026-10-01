@@ -102,7 +102,7 @@ def _analyze(pid: str, mode: str):
                  stage=f"Page {i + 1}/{n}: {msg}")
 
         _set(pid, status="running", progress=round(base, 4), stage=f"Page {i + 1}/{n}: Correcting image")
-        pdir = S.page_dir(pid, i)
+        pdir = S.page_dir(pid, i, create=True)
         S.save_image(pdir / "original.png", pg.image)
         if models is not None or pg.is_photo:
             P = prepare_page(pg.image, models, pg.is_photo)

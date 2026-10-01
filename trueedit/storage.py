@@ -47,9 +47,14 @@ def create(pid: str) -> Path:
     return d
 
 
-def page_dir(pid: str, n: int) -> Path:
+def page_dir(pid: str, n: int, create: bool = False) -> Path:
+    if int(n) < 0:
+        raise NotFound(f"{pid}/{n}")
     d = pdir(pid) / "pages" / str(int(n))
-    d.mkdir(parents=True, exist_ok=True)
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
+    elif not d.exists():
+        raise NotFound(f"{pid}/{n}")
     return d
 
 
@@ -94,7 +99,10 @@ _IMG_CACHE: dict[str, tuple[float, np.ndarray]] = {}
 
 def load_image(path: Path) -> np.ndarray:
     key = str(path)
-    mt = path.stat().st_mtime
+    try:
+        mt = path.stat().st_mtime
+    except FileNotFoundError:
+        raise NotFound(key)
     c = _IMG_CACHE.get(key)
     if c and c[0] == mt:
         return c[1]

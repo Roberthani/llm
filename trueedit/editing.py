@@ -148,6 +148,12 @@ def build_context(canvas: np.ndarray, idx: PageIndex, edit: dict, fit_key: str |
                 obst[b[1]:b[3], b[0]:b[2]] = 1
             return obst
 
+        if len(line["text"].replace(" ", "")) < 4:
+            # too few glyphs to identify a typeface: borrow it from nearby text of the same size
+            fam = _reference_family(canvas, idx, line, fit_key, obst_mask)
+            if fam:
+                hint["family"] = fam
+
         def do_fit():
             return R.fit_style(canvas, line["bbox"], line["text"], obst_mask(line_ids), hint,
                                parts=[w["bbox"] for w in line["words"]])
@@ -176,6 +182,34 @@ def build_context(canvas: np.ndarray, idx: PageIndex, edit: dict, fit_key: str |
     elif edit.get("original_text"):
         ctx["fit"] = R.fit_style(canvas, bbox, edit["original_text"])
     return ctx
+
+
+def _reference_family(canvas, idx: PageIndex, line: dict, fit_key, obst_mask):
+    size = line["style"].get("font_size_px") or 0
+    cy = (line["bbox"][1] + line["bbox"][3]) / 2
+    cx = (line["bbox"][0] + line["bbox"][2]) / 2
+    cands = []
+    for r in idx.lines.values():
+        if r is line or r.get("role") != "text" or len(r["text"].replace(" ", "")) < 6:
+            continue
+        rs = r["style"].get("font_size_px") or 0
+        if not size or abs(rs - size) > 0.15 * size:
+            continue
+        b = r["bbox"]
+        d = abs((b[1] + b[3]) / 2 - cy) * 3 + abs((b[0] + b[2]) / 2 - cx)
+        cands.append((d, r))
+    cands.sort(key=lambda t: t[0])
+    votes: dict[str, float] = {}
+    for _, r in cands[:3]:
+        ids = {w["id"] for w in r["words"]}
+        key = (fit_key + ":" + r["id"]) if fit_key else None
+        fn = lambda r=r, ids=ids: R.fit_style(canvas, r["bbox"], r["text"], obst_mask(ids),
+                                              {"size_px": r["style"].get("font_size_px")},
+                                              parts=[w["bbox"] for w in r["words"]])
+        f = R.cached_fit(key, fn) if key else fn()
+        if f is not None:
+            votes[f.family] = votes.get(f.family, 0) + 1.0 / (0.02 + f.score)
+    return max(votes, key=votes.get) if votes else None
 
 
 _PATCH_CACHE: "OrderedDict[str, R.Patch]" = OrderedDict()

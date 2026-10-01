@@ -55,8 +55,6 @@ def fidelity(pid: str, page: int, doc: dict | None = None) -> dict:
         for b in boxes:
             if b:
                 allowed[max(0, b[1] - mg):b[3] + mg, max(0, b[0] - mg):b[2] + mg] = True
-        for mv in p.info.get("moved", []):
-            pass
         cb = p.bbox
         n = int(p.mask.sum())
         per.append({"edit_id": p.edit_id, "changed_pixels": n, "changed_bbox": cb,
@@ -227,6 +225,12 @@ def _export_pdf_overlay(pid: str, m: dict, doc: dict) -> bytes:
             for e in edits:
                 if e.get("id") == p.edit_id and e.get("text", "").strip() and p.info.get("new_text_bbox"):
                     _invisible(page, e["text"], p.info["new_text_bbox"], sx, sy)
+            # words that were moved along the line keep their (now invisible) text at the new spot
+            for mv in p.info.get("moved", []):
+                w = words.get(mv["id"])
+                if w:
+                    b = w["bbox"]
+                    _invisible(page, w["text"], [b[0] + mv["dx"], b[1], b[2] + mv["dx"], b[3]], sx, sy)
     return src.tobytes(garbage=3, deflate=True)
 
 
@@ -280,6 +284,8 @@ def import_project(data: bytes) -> str:
     m["imported"] = True
     allowed = {m["source_file"]} | {f"pages/{p['index']}/{f}" for p in m.get("pages", [])
                                     for f in ("canvas.png", "analysis.json", "ocr_input.jpg", "original.png")}
+    for p in m.get("pages", []):
+        (d / "pages" / str(p["index"])).mkdir(parents=True, exist_ok=True)
     for name in z.namelist():
         if name in allowed:  # never extract arbitrary paths
             target = d / name
