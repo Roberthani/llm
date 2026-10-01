@@ -212,6 +212,7 @@ summary { cursor: pointer; font-weight: 550; }
   .banner { top: 60px; }
   .toast-host { bottom: auto; top: 60px; }
   .cmp-side { grid-template-columns: 1fr; }
+  .seg button { padding: 6px 9px; font-size: 13px; }
   .modal-card.wide { height: calc(100dvh - 16px); }
 }
 @media (max-width: 380px) {
